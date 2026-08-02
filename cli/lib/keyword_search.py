@@ -1,11 +1,11 @@
-from typing import Any
-from collections import Counter
+import math
 import os
 import pickle
-import math
+from collections import Counter
+from typing import Any
 
-from constants import CACHE_DIR, BM25_K1, BM25_B, LIMIT
-from utils import stemmed_tokens, filter_stopwords, tokenise_query, load_movies
+from constants import BM25_B, BM25_K1, CACHE_DIR, LIMIT
+from utils import filter_stopwords, load_movies, stemmed_tokens, tokenise_query
 
 
 class InvertedIndex:
@@ -93,13 +93,6 @@ class InvertedIndex:
     def bm25(self,doc_id,term)-> float:
         bm25_tf = self.get_bm25_tf(doc_id, term)
         bm25_idf = self.get_bm25_idf(term)
-        
-        #if doc_id == 2275:
-         #   print(f"{doc_id}: {term}")
-         #  print(f"bm25_tf = {bm25_tf}")
-         #   print(f"bm25_idf = {bm25_idf}")
-         #   print(f"{bm25_tf * bm25_idf}")
-         #   print(f"{bm25_tf * bm25_idf:.2f}")
         return bm25_tf * bm25_idf
 
     def bm25_search(self, query, limit):

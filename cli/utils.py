@@ -23,7 +23,7 @@ def load_movies() -> list[Movie]:
 
 def load_stopwords():
     with open(STOPWORDS_PATH, "r") as file:
-        return file.read().splitlines()
+        return {preprocess_text(line) for line in file.read().splitlines()}
 
 
 def tokenise_query(query):

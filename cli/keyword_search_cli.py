@@ -1,8 +1,18 @@
 import argparse
-from utils import tokenise_query, filter_stopwords, stemmed_tokens
-from keyword_search import InvertedIndex, build_command, tf, idf, tfidf, bm25_idf_command, bm25_tf_command, bm25_search_command
-from constants import BM25_K1, BM25_B, LIMIT
 import sys
+
+from constants import BM25_B, BM25_K1, LIMIT
+from lib.keyword_search import (
+    InvertedIndex,
+    bm25_idf_command,
+    bm25_search_command,
+    bm25_tf_command,
+    build_command,
+    idf,
+    tf,
+    tfidf,
+)
+from utils import filter_stopwords, stemmed_tokens, tokenise_query
 
 
 def main() -> None:
