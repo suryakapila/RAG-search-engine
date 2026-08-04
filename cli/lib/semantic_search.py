@@ -76,6 +76,7 @@ class SemanticSearch():
         
         return [
             {
+                "doc_id": id,
                 "score": score,
                 "title": self.document_map[doc_id]["title"],
                 "description": self.document_map[doc_id]["description"]
@@ -187,10 +188,7 @@ def search(query, limit =  LIMIT):
     documents = load_movies()
     semantic.load_or_create_embeddings(documents)
     results = semantic.search(query, limit)
-    print(f"Query: {query}")
-    print(f"Top {limit} results:")
-    for i, result in enumerate(results):
-        print(f"{i+1}. {result['title']} (score: {result['score']:.4f})  {result['description']}")
+    return results
         
 def chunk(text, chunk_size = CHUNK_SIZE, overlap = OVERLAP):
     if not text.strip():

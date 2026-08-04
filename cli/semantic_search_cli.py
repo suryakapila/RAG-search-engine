@@ -60,7 +60,11 @@ def main() -> None:
         case "embed_query":
             embed_query_text(args.query)
         case "search":
-            search(args.query, args.limit)
+            results = search(args.query, args.limit)
+            print(f"Query: {args.query}")
+            print(f"Top {args.limit} results:")
+            for i, result in enumerate(results):
+                print(f"{i+1}. {result['title']} (score: {result['score']:.4f})  {result['description']}")
         case "chunk":
             chunk(args.text, args.chunk_size, args.overlap)
         case "semantic_chunk":
