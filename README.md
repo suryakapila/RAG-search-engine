@@ -158,9 +158,46 @@ hybrid(d) = α * bm25_norm(d) + (1 - α) * semantic_norm(d)
 ### Design tradeoffs and known limitations
 
 - **`500 * limit` candidate pool** is blunt. Fine on ~10k docs; at scale, replace with per-side top-K + a two-stage rerank.
-- **Weighted sum vs RRF.** Weighted sum needs comparable scales (hence normalisation); Reciprocal Rank Fusion works on ranks alone and sidesteps calibration. `rrf_search` is stubbed but not implemented yet.
+- **Weighted sum vs RRF.** Weighted sum needs comparable scales (hence normalisation); Reciprocal Rank Fusion works on ranks alone and sidesteps calibration entirely — see Phase 1d.
 - **`α` is a static knob.** A real system would learn `α` — globally, or per-query via a classifier — rather than treating it as a global constant.
 - **Missing-side score = 0.0** biases against docs that only one side surfaces. Alternatives: fill with a low percentile, or restrict to the intersection. Left as a deliberate simplification.
+
+---
+
+## Phase 1d — Reciprocal Rank Fusion
+
+Weighted-sum fusion (Phase 1c) works, but its whole apparatus exists to paper over a single problem: BM25 scores and cosine similarities aren't comparable. RRF sidesteps that problem instead of solving it — it fuses on **rank position alone** and never looks at the raw scores.
+
+### The formula
+
+```
+rrf(d) = Σ  1 / (k + rank_i(d))
+        i∈sources
+```
+
+Each source (BM25, semantic) contributes `1 / (k + rank)` for a document, summed across the sources that surfaced it. `rank` is 1-based; `k` (default `60`) dampens how much the top ranks dominate — larger `k` flattens the curve and lets deeper results matter more.
+
+### Why RRF over weighted score
+
+- **No score calibration.** Weighted sum requires min-max normalisation per side, per query, just to make the two scales addable — and normalisation is itself lossy and query-dependent (a query where every BM25 hit is weak still gets stretched to `[0, 1]`). RRF reads only the ordering, which is exactly what each retriever is actually good at producing. The entire normalisation step disappears.
+- **No `α` to tune.** Weighted sum has a free parameter that silently decides the outcome (see the `"british bear"` sweep above); the "right" `α` is query-dependent and unlearned here. RRF has `k`, but `k` is a mild, well-behaved dampener — the results are far less sensitive to it than to `α`.
+- **Robust to distribution shape.** Score fusion is skewed by outliers and by how peaked each score distribution is. A single dominant BM25 hit can drag the whole fused ranking. Rank fusion is immune — rank 1 is rank 1 regardless of whether it won by a landslide or a hair.
+- **Naturally handles missing sides.** A document found by only one retriever simply contributes one term. There's no "fill the missing side with `0.0`" decision (which, in weighted sum, actively biased against single-source docs).
+
+### What you give up
+
+RRF throws away *magnitude*. "Barely relevant at rank 3" and "overwhelmingly relevant at rank 3" are identical to it. When a retriever's scores are genuinely well-calibrated, weighted sum can exploit that signal and RRF can't. In practice, across heterogeneous retrievers, robustness usually wins — which is why RRF is the common default.
+
+### Merge flow
+
+1. Fetch a wide candidate pool (`500 * limit`) from each side.
+2. Record each document's 1-based rank on each side (best chunk rank on the semantic side).
+3. Merge on `doc_id`; sum `1 / (k + rank)` across whichever sides surfaced it.
+4. Sort descending, return top `limit`.
+
+### Observed behaviour on `"a bear from peru"`
+
+`k = 60`: *Paddington* tops the list at `0.033` — it's rank 1 on **both** sides (`1/61 + 1/61 ≈ 0.0328`), so the two retrievers agreeing is what carries it, not either one's raw score. Documents that only one side ranks highly still appear, but a single strong signal can't outweigh two independent agreements near the top.
 
 ---
 
@@ -186,6 +223,7 @@ uv run python cli/semantic_search_cli.py search_chunked "british bear" --limit 1
 **Hybrid:**
 ```bash
 uv run python cli/hybrid_search_cli.py weighted-search "british bear" --alpha 0.5 --limit 10
+uv run python cli/hybrid_search_cli.py rrf-search "british bear" -k 60 --limit 10
 uv run python cli/hybrid_search_cli.py normalize 0.5 2.3 1.2 0.5 0.1
 ```
 

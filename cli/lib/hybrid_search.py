@@ -19,6 +19,19 @@ def normalize(scores: list[float]) -> list[float]:
 def hybrid_score(bm25_score: float, semantic_score: float, alpha: float = 0.5) -> float:
     return alpha * bm25_score + (1 - alpha) * semantic_score  
 
+def weighted_search(query: str, alpha: float = 0.5, limit: int = 5) -> list[dict]:
+    documents = load_movies()
+    hybrid = HybridSearch(documents)
+    return hybrid.weighted_search(query, alpha, limit)
+
+def rrf_score(rank: int, k: int = 60) -> float:
+    return 1 / (k + rank)
+
+def rrf_search(query: str, k: int = 60, limit: int = 5):
+    documents = load_movies()
+    hybrid = HybridSearch(documents)
+    return hybrid.rrf_search(query, k , limit)
+    
 
 class HybridSearch:
     def __init__(self, documents: list[dict]) -> None:
@@ -83,10 +96,45 @@ class HybridSearch:
         return ranked[:limit]
 
     def rrf_search(self, query: str, k: int, limit: int = 10) -> list[dict]:
-        raise NotImplementedError("RRF hybrid search is not implemented yet.")
+        pool = 500 * limit
+        
+        bm_query = self._bm25_search(query, pool)
+        semantic_query = self.semantic_search.search_chunks(query, pool)
+        
+        results:dict[int, dict] = {}
+        for position, doc in enumerate(bm_query, start = 1):
+            doc_id = doc["id"]
+            if doc_id not in results:
+                results[doc_id]  = {
+                    "document": doc["document"],
+                    "title": doc["title"],
+                    "bm25_rank": position,
+                    "sem_rank": None,
+                    "rrf_score": None
+                }
+        for position, doc in enumerate(semantic_query, start = 1):
+            doc_id = doc["id"]
+            if doc_id not in results:
+                results[doc_id]  = {
+                    "document": doc["document"],
+                    "title": doc["title"],
+                    "bm25_rank": None,
+                    "sem_rank": position,
+                    "rrf_score": None
+                }
+            elif results[doc_id]["sem_rank"] is None:
+                results[doc_id]["sem_rank"] = position
+        
+        for value in results.values():
+            score = 0.0
+            if value["bm25_rank"] is not None:
+                score += rrf_score(value["bm25_rank"], k)
+            if value["sem_rank"] is not None:
+                score += rrf_score(value["sem_rank"], k)
+            value["rrf_score"] = score   
+            
+        ranked = sorted(results.values(), key=lambda d: d["rrf_score"], reverse=True)
+        return ranked[:limit]
+       
+            
 
-
-def weighted_search(query: str, alpha: float = 0.5, limit: int = 5) -> list[dict]:
-    documents = load_movies()
-    hybrid = HybridSearch(documents)
-    return hybrid.weighted_search(query, alpha, limit)
