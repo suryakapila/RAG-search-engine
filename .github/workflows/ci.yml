@@ -1,0 +1,44 @@
+# Name shown in the GitHub "Actions" tab and on commit/PR status checks.
+name: CI
+
+# WHEN this workflow runs (the "triggers"). Both events here so it gates
+# direct pushes to main and every pull request opened against main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # A workflow has one or more jobs. Jobs run in PARALLEL by default;
+  # each job gets its own fresh virtual machine ("runner").
+  build:
+    # The runner image. ubuntu-latest is the standard Linux runner.
+    runs-on: ubuntu-latest
+
+    # A job is an ordered list of steps, run top-to-bottom on the runner.
+    # A step either runs a shell command (`run:`) or a reusable action (`uses:`).
+    steps:
+      # Check out your repo onto the runner. Without this, the runner is empty.
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # Install uv and enable its dependency cache (keyed off uv.lock).
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # Install Python. Reads the version from .python-version (3.14).
+      - name: Set up Python
+        run: uv python install
+
+      # Reproducible install from uv.lock. --frozen fails if the lock is
+      # stale, so CI can never silently drift from your committed deps.
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # The actual gate: byte-compile the CLI. Same check as the pre-push
+      # hook. If this exits non-zero, the step fails and the job goes red.
+      - name: Compile check
+        run: uv run python -m compileall -q cli

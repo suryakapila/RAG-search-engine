@@ -1,6 +1,8 @@
 import argparse
+import time
 
 from lib.hybrid_search import normalize, weighted_search, rrf_search
+from lib.query_enhance import enhance_query, rerank_batch, rerank_rrf, rerank_cross_encoder
 
 
 def main() -> None:
@@ -19,6 +21,10 @@ def main() -> None:
     rrf_search_parser.add_argument("query", type = str, help="Input query")
     rrf_search_parser.add_argument("-k", type= int, nargs = "?", default = 60, help= "k parameter (a constant) controls how much more weight we give to higher-ranked results vs. lower-ranked ones.")
     rrf_search_parser.add_argument("--limit", type= int, nargs="?", default= 5, help= "configurable limit value")
+    rrf_search_parser.add_argument("--enhance", type=str,choices=["spell", "rewrite", "expand"], help="Query enhancement method")
+    rrf_search_parser.add_argument("--rerank-method", type=str, choices=["individual", "batch", "cross_encoder"], help="Re-ranking the rrf search output")
+    rrf_search_parser.add_argument("--rerank-pool", type=int, default=5, help="Candidate pool multiplier for reranking (pool size = multiplier * limit)")
+    rrf_search_parser.add_argument("--rerank-sleep", type=float, default=3.0, help="Seconds to sleep between rerank LLM calls")
     
     args = parser.parse_args()
 
@@ -34,11 +40,48 @@ def main() -> None:
                 print(f"  BM25: {r['keyword_score']:.3f}, Semantic: {r['semantic_score']:.3f}")
                 print(f"  {r['document']}...")
         case "rrf-search":
-            results = rrf_search(args.query, args.k, args.limit)
-            for i, r in enumerate(results, start=1):
+            query = args.query
+            if args.enhance:
+                enhanced = enhance_query(query, args.enhance)
+                print(f"Enhanced query ({args.enhance}): '{query}' -> '{enhanced}'\n")
+                query = enhanced
+
+            results = rrf_search(query, args.k, args.limit)
+
+            if args.rerank_method:
+                candidates = results[: args.rerank_pool * args.limit]
+                if args.rerank_method == "individual":
+                    for result in candidates:
+                        result["rerank_score"] = rerank_rrf(args.query, result)
+                        time.sleep(args.rerank_sleep)
+                    candidates.sort(key=lambda d: d["rerank_score"], reverse=True)
+                    res = candidates[: args.limit]
+                elif args.rerank_method == "batch":
+                    ranked_ids = rerank_batch(args.query, candidates)
+                    rank_of = {doc_id: rank for rank, doc_id in enumerate(ranked_ids, start=1)}
+                    for result in candidates:
+                        result["rerank_rank"] = rank_of[result["id"]]
+                    candidates.sort(key=lambda d: d["rerank_rank"])
+                    res = candidates[: args.limit]
+                elif args.rerank_method =="cross_encoder":
+                    scores = rerank_cross_encoder(args.query, candidates)
+                    for i in range(0, len(candidates)):
+                        candidates[i]["cross_encoder_score"] = scores[i]
+                    candidates.sort(key = lambda d: d["cross_encoder_score"], reverse= True)
+                    res = candidates[:args.limit]
+            else:
+                res = results[: args.limit]
+
+            for i, r in enumerate(res, start=1):
                 bm25_rank = r["bm25_rank"] if r["bm25_rank"] is not None else "-"
                 sem_rank = r["sem_rank"] if r["sem_rank"] is not None else "-"
                 print(f"{i}. {r['title']}")
+                if args.rerank_method == 'individual':
+                    print(f"  Re-rank Score: {r['rerank_score']:.3f}")
+                elif args.rerank_method == 'batch':
+                    print(f"  Re-rank Rank: {r['rerank_rank']}")
+                elif args.rerank_method == 'cross_encoder':
+                    print(f"  Cross Encoder Score: {r['cross_encoder_score']:.3f}")
                 print(f"  RRF Score: {r['rrf_score']:.3f}")
                 print(f"  BM25 Rank: {bm25_rank}, Semantic Rank: {sem_rank}")
                 print(f"  {r['document']}...")

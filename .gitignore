@@ -13,3 +13,5 @@ wheels/
 
 # Derived indexes / preprocessing artifacts
 /cache/
+
+.env

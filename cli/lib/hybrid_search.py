@@ -1,5 +1,4 @@
 import os
-
 from constants import CACHE_DIR
 from lib.keyword_search import InvertedIndex
 from lib.semantic_search import ChunkedSemanticSearch
@@ -106,6 +105,7 @@ class HybridSearch:
             doc_id = doc["id"]
             if doc_id not in results:
                 results[doc_id]  = {
+                    "id": doc_id,
                     "document": doc["document"],
                     "title": doc["title"],
                     "bm25_rank": position,
@@ -116,6 +116,7 @@ class HybridSearch:
             doc_id = doc["id"]
             if doc_id not in results:
                 results[doc_id]  = {
+                    "id": doc_id,
                     "document": doc["document"],
                     "title": doc["title"],
                     "bm25_rank": None,
@@ -132,9 +133,9 @@ class HybridSearch:
             if value["sem_rank"] is not None:
                 score += rrf_score(value["sem_rank"], k)
             value["rrf_score"] = score   
-            
+                 
         ranked = sorted(results.values(), key=lambda d: d["rrf_score"], reverse=True)
-        return ranked[:limit]
+        return ranked
        
-            
+       
 
